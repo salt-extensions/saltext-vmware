@@ -1,1 +1,0 @@
-Add `vc_patch` client, `vcf_vc_patch` execution module, and `vcf_vc_patch` state module for patching the vCenter Server Appliance itself via VAMI's appliance-update REST API: repository policy configuration, idempotent staging (with version resolution and stage-timeout/precheck-retry recovery), monitoring, and install.

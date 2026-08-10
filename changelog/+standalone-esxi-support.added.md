@@ -1,1 +1,0 @@
-Route every ``vim_*`` client through a shared ``utils/vim.resolve_host_system`` helper so state modules can target a standalone ESXi host with only the ``saltext.vcf.esxi`` pillar (no vCenter present). Detection is automatic based on which pillar block is populated; the vCenter path is unchanged.

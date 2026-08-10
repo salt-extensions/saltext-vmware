@@ -1,1 +1,0 @@
-New ``vcf_vim_vm`` state module for VM lifecycle (``present`` / ``absent`` / ``power_*``) against a standalone ESXi host, alongside port-group security-policy support (``promiscuous`` / ``mac_changes`` / ``forged_transmits``) on ``vim_host_network`` for nested-VM labs.

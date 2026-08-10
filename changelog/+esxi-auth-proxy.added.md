@@ -1,1 +1,0 @@
-Add ``vcf_esxi_auth_proxy`` client, execution and state modules covering the 912-controls ``ESXi.enable-auth-proxy`` requirement: configure the vSphere Authentication Proxy (CAM) advanced settings and join/leave Active Directory through ``JoinDomainWithCAM_Task`` / ``LeaveCurrentDomain_Task`` so ESXi hosts join AD without sending domain credentials from the client.

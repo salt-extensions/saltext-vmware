@@ -1,1 +1,0 @@
-Fixed `vcf_vcenter_datacenter.present` failing with HTTP 400 on create by resolving the required datacenter folder automatically, and corrected the existence check to look datacenters up by name instead of treating the name as a managed-object id. vCenter API errors now surface the response body for diagnostics.

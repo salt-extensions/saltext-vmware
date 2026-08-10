@@ -4,6 +4,47 @@ This project uses [Semantic Versioning](https://semver.org/) - MAJOR.MINOR.PATCH
 
 # Changelog
 
+## 2.0.0 (2026-08-10)
+
+
+### Breaking changes
+
+- `saltext.vcf` is now split into per-component pip extras. `pyvmomi` and `pywbem` have been moved out of the base install and into the extras that need them (`[esxi]`, `[vcenter]`, `[installer]`); new area-scoped extras (`[esxi]`, `[vcenter]`, `[nsx]`, `[sddc]`, `[vcfops]`, `[vcfa]`, `[installer]`, `[vks]`) let you install only the VCF surfaces you actually manage. Modules whose deps are missing are silently skipped by the Salt loader. To keep the pre-split behavior, install everything at once: `pip install 'saltext.vcf[all]'`.
+
+
+### Fixed
+
+- Fix a batch of bugs surfaced when the ``vcf_esxi_*`` state modules are applied against a real ESXi 9.1 host (build 25370933) instead of the in-memory mocks used by the test suite: ``utils/esxi.get_host_system`` traversal, ``esxi_ntp.get`` property access, and ``esxi_advanced.get`` return shape.
+- Fixed `vcf_vcenter_datacenter.present` failing with HTTP 400 on create by resolving the required datacenter folder automatically, and corrected the existence check to look datacenters up by name instead of treating the name as a managed-object id. vCenter API errors now surface the response body for diagnostics.
+- Make ``vcf_esxi_firewall``, ``vcf_esxi_service``, and ``vcf_vim_host_network.vswitch_present`` cleanly idempotent so re-applying against an already-converged host produces zero changes. Adds a new ``vcf_esxi_firewall.global_enabled`` state (maps to ``HostFirewallSystem.UpdateDefaultPolicy``), renames the service-policy key to match the client, and stops treating ``num_ports`` as drift when ESXi auto-scales it.
+- Make ``vcf_vim_vm.present`` parallel-safe (needed when a lab brings up 4 nested VMs concurrently via ``state.orchestrate``) and route standalone-ESXi datastore uploads through the correct endpoint.
+- ``vim_vm_nic.add`` now falls back to a ``deviceName``-only NIC backing when the port group has no ``vim.Network`` MO (which is the case for standalone-ESXi port groups that only carry VMkernel traffic). ESXi resolves the port group by name at attach time.
+
+
+### Added
+
+- Add CEIP get/set helpers to the vCenter appliance client, an exec-module wrapper, and an idempotent ``vcf_vcenter_appliance.ceip_set`` / ``ceip_disabled`` state so 912-controls hardening runs can opt vCenter out of the Customer Experience Improvement Program via ``/api/appliance/ceip``.
+- Add NSX Manager cluster API VIP management (`vcf_nsx_cluster.api_virtual_ip_get/set/clear` and the idempotent `vcf_nsx_cluster_vip.api_vip_set` / `api_vip_absent` states) to satisfy the 912 Controls requirement that the NSX-T Controller be configured as an active/active cluster fronted by a cluster VIP (or external load balancer). Wraps the Manager-plane endpoint `/api/v1/cluster/api-virtual-ip` — there is no equivalent Policy-API surface.
+- Add ``get_resource_config`` / ``set_resource_config`` to the ``vim_vm`` client + ``vcf_vim_vm.resource_pinning_disabled`` state to enforce 912 Controls prohibiting VM-to-CPU pinning (``cpuAffinity``, ``cpuAllocation.shares``) and VM-to-memory pinning (``memoryAllocation.reservation``, ``memoryReservationLockedToMax``).
+- Add ``nsx_telemetry`` client, ``vcf_nsx_telemetry`` execution module, and ``vcf_nsx_telemetry`` state with ``optin_set`` / ``ceip_disabled`` verbs to manage the NSX Manager CEIP opt-in (912 Controls: NSX-T Manager must not provide environment information to third parties).
+- Add ``vcf_esxi_ad_auth`` client, execution and state modules covering the 912-controls ``ESXi.enable-ad-auth_adv`` requirement: join ESXi hosts to an Active Directory domain natively via ``HostActiveDirectoryAuthentication.JoinDomain_Task`` (plaintext AD credentials sent directly to the host). The CAM/auth-proxy path is unchanged and remains in ``vcf_esxi_auth_proxy``.
+- Add ``vcf_esxi_auth_proxy`` client, execution and state modules covering the 912-controls ``ESXi.enable-auth-proxy`` requirement: configure the vSphere Authentication Proxy (CAM) advanced settings and join/leave Active Directory through ``JoinDomainWithCAM_Task`` / ``LeaveCurrentDomain_Task`` so ESXi hosts join AD without sending domain credentials from the client.
+- Add ``vcf_vrli_*`` client, execution and state modules for **VCF Operations for Logs 9.0.2.0** (the vRealize Log Insight rebrand): appliance certificate install/rotation over ``POST /api/v2/certificate``, Active Directory integration over ``POST /api/v2/ad``, and — because the 9.0.2.0 build exposes no REST surface for either — session inactivity timeout (``/usr/lib/loginsight/application/etc/3rd_config/web.xml``) and IPv4 DNS (``/etc/systemd/network/10-eth0.network``) via root SSH. Closes the four 912-Controls vRLI requirements: cert install, inactive timeout 1800 s, IPv4 DNS config, AD integration.
+- Add ``vim_vm_cdrom`` client + ``vcf_vim_vm_cdrom`` execution/state modules for CD-ROM device lifecycle (add, remove, attach ISO, detach), including the pyVmomi task-wait helper needed by ``state.apply`` orchestration of a nested-ESXi lab.
+- Add `esxi_vlcm` client, `vcf_esxi_vlcm` execution module, and `vcf_esxi_vlcm` state module for patching ESXi hosts via vCenter's ESX Lifecycle Manager (vLCM) REST API: depot configuration/sync, desired-image drafts, cluster apply policy, and compliance/precheck/stage/remediate workflows.
+- Add `vc_patch` client, `vcf_vc_patch` execution module, and `vcf_vc_patch` state module for patching the vCenter Server Appliance itself via VAMI's appliance-update REST API: repository policy configuration, idempotent staging (with version resolution and stage-timeout/precheck-retry recovery), monitoring, and install.
+- Add the SDDC Manager REST surface needed to drive VCF async patching directly (without shelling out to the ``vcf-async-patch-tool`` CLI): ``sddc_bundles.upload`` / ``delete`` / ``for_skip_upgrade`` for offline bundle staging, ``sddc_releases.custom_patches`` for reading which async patches are registered on a domain, and a new ``sddc_personalities`` client + ``vcf_sddc_personalities`` execution module for vSphere cluster-image lifecycle. The enable/disable half of the async-patch workflow and the orchestrating state module are left as follow-ups pending lab reverse-engineering of the ``vcf-async-patch-tool -e --patch`` traffic.
+- Added VMSP NTP, DNS and syslog controls (states `vcf_vmsp_ntp`, `vcf_vmsp_dns`, `vcf_vmsp_syslog`) ported from config-modules, driven through the VMSP REST API (`/api/v1/identity/token` auth, `vsp` component apply).
+- Added a `vmsp` Salt Resource type (`resources/vmsp`) so VMSP instances declared under `resources.vmsp.instances` can be targeted with `T@vmsp:<id>` and operated via the framework (ntp/dns/syslog get/set).
+- Extend ``vcf_vim_datastore_file.file_present`` with ``force`` and ``match_size`` options so a re-run of ``state.apply`` re-uploads a file whose size differs from the local source or when the caller wants an unconditional overwrite (useful for iterating on nested-lab ISO builds).
+- Extend `nsx_tier0` with BGP/OSPF/multicast get+set and `nsx_tier1` with multicast get+set (Policy API `locale-services/*` PATCH), plus `vcf_nsx_tier0.bgp_disabled` / `ospf_disabled` / `multicast_disabled` and `vcf_nsx_tier1.multicast_disabled` states for 912 gateway-hardening controls.
+- Extend `vcfops_resource_group` with `members(group_id)` and `list_types()` for the corresponding VCF Operations endpoints.
+- NIC-teaming / physical-uplink failover-mode configuration on both standard vSwitches (``vcf_vim_host_network.vswitch_get_teaming`` / ``vswitch_set_teaming`` + ``vswitch_teaming_configured`` state) and distributed port groups (``vcf_vim_dvs_portgroup.get_teaming`` / ``set_teaming`` + ``vcf_vim_dvs.teaming_configured`` state). Covers the four load-balancing policies plus explicit-failover order. LACP-with-LAG on the DVS (LAG creation + ``ReconfigureLacp_Task``) is a follow-up.
+- New ``vcf_nsx_node_services`` client / execution / state modules wrapping ``/api/v1/node/services/http``, with an idempotent ``http_configured`` state that read-merge-PUTs the required DoS-mitigation ``service_properties`` (``client_api_rate_limit`` / ``client_api_concurrency_limit`` / ``global_api_concurrency_limit`` / ``connection_timeout`` / ``redirect_host``) for STIG 912.
+- New ``vcf_vim_host_datastore`` state module (``vmfs_present``, ``nfs_mounted``, ``absent``) wrapping the existing execution module so a VMFS datastore can be declared in a Salt state file — standalone-aware and vCenter-aware.
+- New ``vcf_vim_vm`` state module for VM lifecycle (``present`` / ``absent`` / ``power_*``) against a standalone ESXi host, alongside port-group security-policy support (``promiscuous`` / ``mac_changes`` / ``forged_transmits``) on ``vim_host_network`` for nested-VM labs.
+- Route every ``vim_*`` client through a shared ``utils/vim.resolve_host_system`` helper so state modules can target a standalone ESXi host with only the ``saltext.vcf.esxi`` pillar (no vCenter present). Detection is automatic based on which pillar block is populated; the vCenter path is unchanged.
+
 ## 1.0.0 (2026-06-07)
 
 

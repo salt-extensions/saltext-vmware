@@ -1,1 +1,0 @@
-New ``vcf_vim_host_datastore`` state module (``vmfs_present``, ``nfs_mounted``, ``absent``) wrapping the existing execution module so a VMFS datastore can be declared in a Salt state file — standalone-aware and vCenter-aware.
