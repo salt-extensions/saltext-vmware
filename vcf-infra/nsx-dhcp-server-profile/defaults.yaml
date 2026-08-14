@@ -1,0 +1,5 @@
+dhcp_server:
+  name: dhcp-server-01
+  server_addresses:
+    - 10.0.0.2/24
+  lease_time: 86400

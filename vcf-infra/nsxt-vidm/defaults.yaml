@@ -1,0 +1,10 @@
+# Field names follow the standard NSX-T shape but haven't been exercised
+# against a live NSX Manager — verify before real use. If NSX masks
+# client_secret on read, this will show "changed" every run (harmless,
+# see vcf_nsx_vidm.enabled's docstring).
+vidm:
+  enable: true
+  hostname: vidm.corp.example.test
+  domain_name: corp.example.test
+  client_id: nsx-manager
+  client_secret: changeme

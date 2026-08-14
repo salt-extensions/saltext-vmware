@@ -1,0 +1,3 @@
+{% import_yaml "nsxt-segment-vccluster/defaults.yaml" as defaults %}
+
+{% set cfg = salt['pillar.get']('nsxt-segment-vccluster', default=defaults, merge=True) %}

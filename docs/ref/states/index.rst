@@ -21,16 +21,24 @@ _____________
     vcf_esxi_vlcm
     vcf_installer_bringup
     vcf_nsx_cluster_vip
+    vcf_nsx_dhcp
+    vcf_nsx_dns_servers
     vcf_nsx_firewall_rule
     vcf_nsx_group
+    vcf_nsx_ldap
+    vcf_nsx_localos_user
     vcf_nsx_node_services
+    vcf_nsx_ntp_servers
     vcf_nsx_role_binding
     vcf_nsx_security_policy
     vcf_nsx_segment
     vcf_nsx_service
+    vcf_nsx_syslog_exporter
     vcf_nsx_telemetry
     vcf_nsx_tier0
     vcf_nsx_tier1
+    vcf_nsx_uplink_profile
+    vcf_nsx_vidm
     vcf_sddc_host
     vcf_vc_patch
     vcf_vccluster_resource_pool

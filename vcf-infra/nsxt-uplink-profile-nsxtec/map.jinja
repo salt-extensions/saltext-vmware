@@ -1,0 +1,3 @@
+{% import_yaml "nsxt-uplink-profile-nsxtec/defaults.yaml" as defaults %}
+
+{% set cfg = salt['pillar.get']('nsxt-uplink-profile-nsxtec', default=defaults, merge=True) %}

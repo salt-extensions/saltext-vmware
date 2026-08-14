@@ -1,0 +1,12 @@
+# Uplink profile for ESXi host transport nodes — single active uplink,
+# failover teaming. `**spec` is a raw pass-through to the NSX Policy API
+# host-switch-profile PUT body; field names haven't been exercised
+# against a live NSX Manager — verify before real use.
+uplink_profile:
+  name: uplink-profile-host-01
+  teaming:
+    policy: FAILOVER_ORDER
+    active_list:
+      - uplink_name: uplink-1
+        uplink_type: PNIC
+  mtu: 1700

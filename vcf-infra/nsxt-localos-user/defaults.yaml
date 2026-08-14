@@ -1,0 +1,6 @@
+# Field names follow the standard NSX-T Node API shape but haven't been
+# exercised against a live NSX Manager — verify before real use.
+user:
+  username: svc-nsx-cli
+  password: changeme
+  role: auditor

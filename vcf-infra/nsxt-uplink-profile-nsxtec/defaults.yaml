@@ -1,0 +1,16 @@
+# Uplink profile for NSX Edge transport nodes (Edge Cluster) — two active
+# uplinks, source-id load balancing, matching the typical Edge teaming
+# recommendation (vs. nsxt-uplink-profile's single-active-uplink ESXi host
+# example). `**spec` is a raw pass-through to the NSX Policy API
+# host-switch-profile PUT body; field names haven't been exercised
+# against a live NSX Manager — verify before real use.
+uplink_profile:
+  name: uplink-profile-edge-01
+  teaming:
+    policy: LOADBALANCE_SRCID
+    active_list:
+      - uplink_name: uplink-1
+        uplink_type: PNIC
+      - uplink_name: uplink-2
+        uplink_type: PNIC
+  mtu: 1700
