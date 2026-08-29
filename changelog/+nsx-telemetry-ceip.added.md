@@ -1,1 +1,0 @@
-Add ``nsx_telemetry`` client, ``vcf_nsx_telemetry`` execution module, and ``vcf_nsx_telemetry`` state with ``optin_set`` / ``ceip_disabled`` verbs to manage the NSX Manager CEIP opt-in (912 Controls: NSX-T Manager must not provide environment information to third parties).

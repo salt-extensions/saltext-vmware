@@ -1,1 +1,0 @@
-New ``vcf_nsx_node_services`` client / execution / state modules wrapping ``/api/v1/node/services/http``, with an idempotent ``http_configured`` state that read-merge-PUTs the required DoS-mitigation ``service_properties`` (``client_api_rate_limit`` / ``client_api_concurrency_limit`` / ``global_api_concurrency_limit`` / ``connection_timeout`` / ``redirect_host``) for STIG 912.

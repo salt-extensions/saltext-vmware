@@ -1,1 +1,0 @@
-Extend ``vcf_vim_datastore_file.file_present`` with ``force`` and ``match_size`` options so a re-run of ``state.apply`` re-uploads a file whose size differs from the local source or when the caller wants an unconditional overwrite (useful for iterating on nested-lab ISO builds).
