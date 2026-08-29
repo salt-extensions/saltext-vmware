@@ -432,3 +432,132 @@ def test_deploy_ova_happy_path(monkeypatch, tmp_path):
     assert "elapsed_sec" in result
     assert put_calls == [{"url": "https://esx-1.lab/nfc/abc/disk"}]
     lease.HttpNfcLeaseComplete.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# _sanitize_ovf_descriptor
+# ---------------------------------------------------------------------------
+
+
+_OVF_WITH_STORAGE_GROUP = """<?xml version="1.0"?>
+<Envelope>
+  <References>
+    <File ovf:id="file1" ovf:href="disk1.vmdk"/>
+  </References>
+  <vmw:StorageGroupSection ovf:required="false" vmw:id="group1" vmw:name="lvn-cm2w3-vc1-c1-t0compute">
+  </vmw:StorageGroupSection>
+  <DiskSection>
+    <Disk ovf:capacity="1024" ovf:capacityAllocationUnits="byte * 2^30" ovf:diskId="d1" ovf:fileRef="file1" ovf:format="streamOptimized" ovf:populatedSize="12530614272"/>
+  </DiskSection>
+  <VirtualSystem>
+    <vmw:StorageSection ovf:required="false" vmw:group="group1"/>
+  </VirtualSystem>
+</Envelope>"""
+
+
+def test_sanitize_strips_storage_group_and_section_by_default():
+    result = ovf_deploy._sanitize_ovf_descriptor(_OVF_WITH_STORAGE_GROUP)
+    assert "StorageGroupSection" not in result
+    assert "StorageSection" not in result
+    # Disk element preserved; capacity untouched with no clamp requested.
+    assert 'ovf:capacity="1024"' in result
+
+
+def test_sanitize_no_op_when_ovf_has_no_pod_storage_refs():
+    plain = '<?xml version="1.0"?><Envelope><Disk ovf:capacity="20"/></Envelope>'
+    result = ovf_deploy._sanitize_ovf_descriptor(plain)
+    assert result == plain
+
+
+def test_sanitize_clamps_oversize_disk_capacity_when_requested():
+    result = ovf_deploy._sanitize_ovf_descriptor(_OVF_WITH_STORAGE_GROUP, max_disk_gib=128)
+    assert 'ovf:capacity="128"' in result
+    assert 'ovf:capacity="1024"' not in result
+
+
+def test_sanitize_leaves_disks_smaller_than_clamp_alone():
+    xml = '<Envelope><Disk ovf:capacity="32" ovf:diskId="d1"/></Envelope>'
+    result = ovf_deploy._sanitize_ovf_descriptor(xml, max_disk_gib=128)
+    assert 'ovf:capacity="32"' in result
+
+
+# ---------------------------------------------------------------------------
+# _apply_storage_profile
+# ---------------------------------------------------------------------------
+
+
+def test_apply_storage_profile_attaches_to_vm_and_all_disks():
+    """Policy attach walks both configSpec.vmProfile and every VirtualDisk device."""
+    disk_a = mock.Mock(spec=vim.vm.device.VirtualDeviceSpec)
+    disk_a.device = mock.Mock(spec=vim.vm.device.VirtualDisk)
+    disk_b = mock.Mock(spec=vim.vm.device.VirtualDeviceSpec)
+    disk_b.device = mock.Mock(spec=vim.vm.device.VirtualDisk)
+    nic = mock.Mock(spec=vim.vm.device.VirtualDeviceSpec)
+    nic.device = mock.Mock(spec=vim.vm.device.VirtualEthernetCard)
+
+    config_spec = mock.Mock()
+    config_spec.deviceChange = [disk_a, disk_b, nic]
+    import_spec = mock.Mock()
+    import_spec.configSpec = config_spec
+
+    ovf_deploy._apply_storage_profile(import_spec, "policy-id-1234")
+
+    # VM-level: exactly one DefinedProfileSpec pointing at our id.
+    assert len(config_spec.vmProfile) == 1
+    assert config_spec.vmProfile[0].profileId == "policy-id-1234"
+    # Per-disk: each VirtualDisk got its .profile set. NIC untouched.
+    assert disk_a.profile[0].profileId == "policy-id-1234"
+    assert disk_b.profile[0].profileId == "policy-id-1234"
+    assert not hasattr(nic, "profile") or nic.profile != disk_a.profile  # NIC has no assignment
+
+
+# ---------------------------------------------------------------------------
+# find_vm
+# ---------------------------------------------------------------------------
+
+
+def test_find_vm_returns_none_when_missing(monkeypatch):
+    def _fake_connect(*a, **kw):
+        content = mock.Mock()
+        content.rootFolder.childEntity = []
+        si = mock.Mock()
+        si.RetrieveContent.return_value = content
+        return si
+
+    monkeypatch.setattr(ovf_deploy, "_connect", _fake_connect)
+    monkeypatch.setattr(ovf_deploy, "Disconnect", lambda si: None)
+
+    result = ovf_deploy.find_vm(
+        target_host="vc.test",
+        target_user="u",
+        target_password="p",
+        vm_name="doesnt-exist",
+    )
+    assert result is None
+
+
+def test_find_vm_returns_dict_when_present(monkeypatch):
+    vm = mock.Mock(spec=vim.VirtualMachine)
+    vm.name = "vrli"
+    vm._moId = "vm-1042"
+    vm.runtime.powerState = vim.VirtualMachinePowerState.poweredOn
+
+    dc = mock.Mock()
+    dc.vmFolder = mock.Mock()
+    dc.vmFolder.childEntity = [vm]
+
+    content = mock.Mock()
+    content.rootFolder.childEntity = [dc]
+    si = mock.Mock()
+    si.RetrieveContent.return_value = content
+
+    monkeypatch.setattr(ovf_deploy, "_connect", lambda *a, **kw: si)
+    monkeypatch.setattr(ovf_deploy, "Disconnect", lambda si: None)
+
+    result = ovf_deploy.find_vm(
+        target_host="vc.test",
+        target_user="u",
+        target_password="p",
+        vm_name="vrli",
+    )
+    assert result == {"vm_name": "vrli", "vm_moid": "vm-1042", "powered_on": True}

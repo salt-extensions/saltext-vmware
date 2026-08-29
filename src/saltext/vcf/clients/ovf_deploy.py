@@ -13,6 +13,7 @@ exists, so pillar-driven session caching doesn't apply.
 """
 
 import logging
+import re
 import ssl
 import tarfile
 import tempfile
@@ -50,6 +51,8 @@ def deploy_ova(
     power_on=True,
     verify_ssl=False,
     upload_timeout=3600,
+    storage_profile_id=None,
+    max_disk_gib=None,
 ):
     """Deploy an OVA to *target_host* (ESXi standalone or vCenter).
 
@@ -73,7 +76,7 @@ def deploy_ova(
         try:
             with tarfile.open(ova_path) as tar:
                 members = list(tar.getmembers())
-                ovf_xml = _read_ovf_descriptor(tar, members)
+                ovf_xml = _read_ovf_descriptor(tar, members, max_disk_gib=max_disk_gib)
                 import_spec, file_items = _create_import_spec(
                     content=content,
                     ovf_xml=ovf_xml,
@@ -86,6 +89,8 @@ def deploy_ova(
                     deployment_option=deployment_option,
                     host_ref=host_ref,
                 )
+                if storage_profile_id:
+                    _apply_storage_profile(import_spec, storage_profile_id)
                 lease = rp.ImportVApp(spec=import_spec, folder=vm_folder, host=host_ref)
                 _wait_lease_ready(lease)
                 new_vm = lease.info.entity
@@ -131,6 +136,74 @@ def deploy_ova(
             Disconnect(si)
         except Exception:  # pylint: disable=broad-except
             log.debug("Disconnect raised; ignoring", exc_info=True)
+
+
+def _apply_storage_profile(import_spec, profile_id):
+    """Attach *profile_id* (a PBM profile uniqueId string) to the VM and every disk.
+
+    Needed because ``CreateImportSpecParams.diskProvisioning='thin'`` is honored
+    at the ImportSpec level (initial VM shell shows ``thin=True``) but ESXi's
+    NFC daemon rewrites the backing to ``thin=False`` when it unpacks the
+    stream-optimised VMDK, unless a storage policy with
+    ``proportionalCapacity=0`` is attached. Setting the policy at ImportVApp
+    time is the only reliable way to make the resulting disks stay thin on
+    vSAN.
+    """
+    profile_spec = vim.vm.DefinedProfileSpec(profileId=profile_id)
+    cfg = import_spec.configSpec
+    # VM-level profile (belt & braces; per-disk profile is the load-bearing bit).
+    cfg.vmProfile = [profile_spec]
+    for dev_change in cfg.deviceChange or []:
+        if isinstance(dev_change.device, vim.vm.device.VirtualDisk):
+            dev_change.profile = [vim.vm.DefinedProfileSpec(profileId=profile_id)]
+
+
+def find_vm(
+    *,
+    target_host,
+    target_user,
+    target_password,
+    vm_name,
+    target_port=443,
+    verify_ssl=False,
+):
+    """Return ``{vm_name, vm_moid, powered_on}`` for *vm_name* on *target_host*, or ``None``.
+
+    Idempotency helper for callers that want to skip an OVA push when the
+    target VM already exists. Same connection semantics as :func:`deploy_ova`.
+    """
+    si = _connect(target_host, target_user, target_password, target_port, verify_ssl)
+    try:
+        content = si.RetrieveContent()
+        for dc in content.rootFolder.childEntity:
+            if not hasattr(dc, "vmFolder"):
+                continue
+            found = _walk_for_vm(dc.vmFolder, vm_name)
+            if found is not None:
+                return {
+                    "vm_name": found.name,
+                    "vm_moid": found._moId,  # noqa: SLF001
+                    "powered_on": (
+                        found.runtime.powerState == vim.VirtualMachinePowerState.poweredOn
+                    ),
+                }
+    finally:
+        try:
+            Disconnect(si)
+        except Exception:  # pylint: disable=broad-except
+            log.debug("Disconnect raised; ignoring", exc_info=True)
+    return None
+
+
+def _walk_for_vm(folder, name):
+    for entity in getattr(folder, "childEntity", []) or []:
+        if hasattr(entity, "childEntity"):
+            found = _walk_for_vm(entity, name)
+            if found is not None:
+                return found
+        elif getattr(entity, "name", None) == name:
+            return entity
+    return None
 
 
 def _connect(host, user, password, port, verify_ssl):
@@ -217,14 +290,86 @@ def _materialize_ova(source, verify_ssl):
     return str(p), None
 
 
-def _read_ovf_descriptor(tar, members):
+def _read_ovf_descriptor(tar, members, max_disk_gib=None):
     for m in members:
         if m.name.lower().endswith(".ovf"):
             f = tar.extractfile(m)
             if f is None:
                 raise RuntimeError(f"could not read {m.name!r} from OVA")
-            return f.read().decode("utf-8")
+            return _sanitize_ovf_descriptor(f.read().decode("utf-8"), max_disk_gib=max_disk_gib)
     raise RuntimeError("no .ovf descriptor found in OVA")
+
+
+# Some OVAs (notably VRNI Platform/Proxy exports) carry a
+# ``<vmw:StorageGroupSection vmw:name="<pod-storage-policy>">`` block plus a
+# ``<vmw:StorageSection vmw:group=...>`` under the VirtualSystem that
+# references a *by-name* storage policy from the pod the OVA was built on
+# (e.g. ``lvn-cm2w3-vc1-c1-t0compute``). When we push to a different vCenter
+# the referenced policy does not exist; ``ImportVApp`` accepts the spec but
+# vCenter's NFC layer returns bare ``HTTP 500 'Internal Error'`` on the
+# first VMDK PUT. Stripping both elements makes vCenter fall back to the
+# datastore's default policy and lets the upload succeed. See
+# reference_gobuild_ova_inventory.md for the affected products.
+_STORAGE_GROUP_RE = re.compile(
+    r"<vmw:StorageGroupSection\b[^>]*>.*?</vmw:StorageGroupSection>\s*",
+    re.DOTALL,
+)
+_STORAGE_SECTION_RE = re.compile(
+    # matches both self-closed and open/close forms
+    r"<vmw:StorageSection\b[^>]*/>\s*|<vmw:StorageSection\b[^>]*>.*?</vmw:StorageSection>\s*",
+    re.DOTALL,
+)
+
+# Some OVAs (VRNI Platform in particular) declare ``ovf:capacity="1024"``
+# GiB on a stream-optimised VMDK whose ``ovf:populatedSize`` is a fraction
+# of that (VRNI Platform 6.14: 1024 GiB requested, ~12 GB populated). vSAN
+# with any FTT>0 storage policy reserves the FULL requested capacity times
+# the mirror count, which on a lab-sized 4 TB vSAN datastore rapidly hits
+# ``VSANOBJLIB: No space left on device`` at ``DiskLibCreateObjPosix``,
+# manifested as the same bare ``HTTP 500 'Internal Error'`` from vCenter
+# on the first VMDK PUT.
+_DISK_CAPACITY_RE = re.compile(
+    r'(<Disk\b[^/>]*\bovf:capacity=")(\d+)(")',
+    re.DOTALL,
+)
+
+
+def _sanitize_ovf_descriptor(xml, max_disk_gib=None):
+    """Strip pod-specific storage-policy refs and clamp oversized disk capacity.
+
+    Removes ``<vmw:StorageGroupSection>`` / ``<vmw:StorageSection>``
+    dangling policy references, and rewrites any ``<Disk ovf:capacity="N"``
+    where ``N`` (in GiB, per ``ovf:capacityAllocationUnits="byte * 2^30"``)
+    exceeds *max_disk_gib* down to *max_disk_gib*. The clamp is only
+    applied to disks whose declared capacity is > *max_disk_gib*, and
+    logs a warning when it fires.
+    """
+    new_xml, sg_n = _STORAGE_GROUP_RE.subn("", xml)
+    new_xml, ss_n = _STORAGE_SECTION_RE.subn("", new_xml)
+    if sg_n or ss_n:
+        log.warning(
+            "stripped %d StorageGroupSection / %d StorageSection element(s) "
+            "from OVF descriptor to avoid dangling storage-policy reference",
+            sg_n,
+            ss_n,
+        )
+
+    if max_disk_gib is not None:
+
+        def _clamp(match):
+            head, cap, tail = match.group(1), int(match.group(2)), match.group(3)
+            if cap > max_disk_gib:
+                log.warning(
+                    "clamped Disk ovf:capacity from %d GiB down to %d GiB to fit "
+                    "vSAN reservation (see _sanitize_ovf_descriptor docstring)",
+                    cap,
+                    max_disk_gib,
+                )
+                return f"{head}{max_disk_gib}{tail}"
+            return match.group(0)
+
+        new_xml = _DISK_CAPACITY_RE.sub(_clamp, new_xml)
+    return new_xml
 
 
 def _create_import_spec(
@@ -302,7 +447,7 @@ class _LeaseProgress(threading.Thread):
         super().__init__(daemon=True, name="ovf-lease-progress")
         self.lease = lease
         self.interval = interval
-        self._stop = threading.Event()
+        self._stop_event = threading.Event()
         self._percent = 0
         self._lock = threading.Lock()
 
@@ -311,19 +456,19 @@ class _LeaseProgress(threading.Thread):
             self._percent = max(0, min(100, int(pct)))
 
     def stop(self):
-        self._stop.set()
+        self._stop_event.set()
         if self.is_alive():
             self.join(timeout=10)
 
     def run(self):
-        while not self._stop.is_set():
+        while not self._stop_event.is_set():
             with self._lock:
                 pct = self._percent
             try:
                 self.lease.HttpNfcLeaseProgress(pct)
             except Exception as exc:  # pylint: disable=broad-except
                 log.warning("HttpNfcLeaseProgress(%d) failed: %s", pct, exc)
-            if self._stop.wait(self.interval):
+            if self._stop_event.wait(self.interval):
                 return
 
 
@@ -369,21 +514,37 @@ def _upload_disks(
         stream = tar.extractfile(member)
         if stream is None:
             raise RuntimeError(f"could not extract {fi.path!r} from OVA")
+        # Content-Type: stream-optimised VMDK MUST use
+        # ``application/x-vnd.vmware-streamVmdk`` regardless of
+        # ``fi.create`` — some vCenter-exported OVAs (VRNI Platform/Proxy)
+        # emit VMDK file items with ``create=False`` because the VirtualDisk
+        # already lists them, and sending ``application/octet-stream``
+        # causes the ESXi NFC daemon to reject the very first write with
+        # bare ``HTTP 500 'Internal Error'``. All other file types default
+        # to octet-stream.
+        is_vmdk = fi.path.lower().endswith(".vmdk")
         headers = {
             "Content-Type": (
-                "application/x-vnd.vmware-streamVmdk"
-                if getattr(fi, "create", False)
-                else "application/octet-stream"
+                "application/x-vnd.vmware-streamVmdk" if is_vmdk else "application/octet-stream"
             ),
-            "Content-Length": str(size),
             "Cookie": session_cookie,
             # ESXi's ha-nfc requires Overwrite even for the empty placeholder
             # the lease just created; without it the daemon 403s before
             # looking at the body.
             "Overwrite": "t",
         }
+        # Send all payloads (VMDK, nvram, ISO) with a fixed ``Content-Length``.
+        # HTTP-1.1 chunked transfer breaks ESXi NFC's stream-VMDK parser on
+        # the VRNI Platform OVA: vpxa logs
+        # ``[STREAMVMDK] totBytesGrainData read:0`` after ~90s and the PUT
+        # ends with a bare ``HTTP 500 'Internal Error'``. Fixed length gets
+        # the same VMDK parsed correctly. Revisit chunked (for TCP-level
+        # backpressure on very large disks) only if a concrete failure
+        # requires it.
         reader = _CountingReader(stream, prior_sent=bytes_sent, total=total_size, progress=progress)
-        resp = requests.put(url, data=reader, headers=headers, verify=verify_ssl, timeout=timeout)
+        headers["Content-Length"] = str(size)
+        data = reader
+        resp = requests.put(url, data=data, headers=headers, verify=verify_ssl, timeout=timeout)
         if resp.status_code >= 400:
             body = (resp.text or "")[:500]
             raise RuntimeError(

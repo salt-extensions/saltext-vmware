@@ -16,6 +16,10 @@ TTL is the same 1800 s (30 min) that appears in the appliance's
 ``web.xml`` ``<session-timeout>`` — this module refreshes at 80 % of
 that TTL to avoid mid-request 401s.
 
+A 401 mid-request is only retried when the body carries vRLI's
+``"Session expired"`` marker; other 401s (e.g. Forbidden) surface
+unchanged so genuine auth failures don't ping-pong through re-login.
+
 Some appliance-local controls (session inactivity timeout, IPv4 DNS
 config) have **no REST surface** on this build; they are edited on
 the appliance itself via SSH. The connection info for that transport
@@ -111,10 +115,13 @@ def _acquire_token(cfg):
         timeout=cfg["timeout"],
     )
     resp.raise_for_status()
-    body = resp.json()
+    body = resp.json() or {}
+    session_id = body.get("sessionId")
+    if not session_id:
+        raise RuntimeError(f"vRLI POST /api/v2/sessions did not return sessionId: {body!r}")
     ttl = int(body.get("ttl", 1800))
     return {
-        "token": body["sessionId"],
+        "token": session_id,
         "expires_at": _now() + ttl * _REFRESH_FRACTION,
         "provider": cfg["provider"],
     }
@@ -127,6 +134,8 @@ def get_token(opts, profile=None):
     long-running Salt states don't race with token expiry mid-request.
     """
     cfg = get_config(opts, profile=profile)
+    if not cfg["host"]:
+        raise RuntimeError("saltext.vcf.vrli.host is not configured; cannot reach vRLI master")
     if not cfg["verify_ssl"]:
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -163,13 +172,32 @@ def _session(opts, profile=None):
     return session, cfg
 
 
+def _looks_like_session_expired(resp):
+    """True if a 401 response body carries vRLI's 'Session expired' marker.
+
+    Genuine auth failures (401 Forbidden, bad creds) don't match — those
+    should surface to the caller instead of triggering a re-login retry
+    that will just fail again.
+    """
+    if resp is None or resp.status_code != 401:
+        return False
+    try:
+        body = resp.json()
+    except ValueError:
+        return False
+    if not isinstance(body, dict):
+        return False
+    msg = str(body.get("errorMessage") or body.get("message") or "")
+    return "session expired" in msg.lower() or "session has expired" in msg.lower()
+
+
 def _request(method, opts, path, *, profile=None, **kwargs):
-    """Underlying request with transparent 401-retry once."""
+    """Underlying request with 401-retry once on 'Session expired'."""
     session, cfg = _session(opts, profile=profile)
     url = f"{_base_url(cfg)}{path}"
     timeout = kwargs.pop("timeout", None) or cfg["timeout"]
     resp = session.request(method, url, timeout=timeout, **kwargs)
-    if resp.status_code == 401:
+    if _looks_like_session_expired(resp):
         invalidate_token(opts, profile=profile)
         session, cfg = _session(opts, profile=profile)
         resp = session.request(method, url, timeout=timeout, **kwargs)

@@ -58,11 +58,13 @@ def test_api_get_adds_bearer_header(opts, vrli_authed):
 
 
 def test_401_triggers_reauth_and_retry(opts, vrli_authed):
-    # First call 401 → invalidate + re-auth + retry succeeds.
+    # First call 401 with "Session expired" marker → invalidate + re-auth
+    # + retry succeeds. Non-"Session expired" 401s surface unchanged; see
+    # tests/unit/clients/test_vrli_master.py for that coverage.
     vrli_authed.add(
         responses.GET,
         "https://vrli.test:9543/api/v2/ad",
-        json={"errorMessage": "expired"},
+        json={"errorMessage": "Session expired"},
         status=401,
     )
     vrli_authed.add(
