@@ -1,1 +1,0 @@
-Add CEIP get/set helpers to the vCenter appliance client, an exec-module wrapper, and an idempotent ``vcf_vcenter_appliance.ceip_set`` / ``ceip_disabled`` state so 912-controls hardening runs can opt vCenter out of the Customer Experience Improvement Program via ``/api/appliance/ceip``.

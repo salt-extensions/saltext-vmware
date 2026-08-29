@@ -1,1 +1,0 @@
-``vim_vm_nic.add`` now falls back to a ``deviceName``-only NIC backing when the port group has no ``vim.Network`` MO (which is the case for standalone-ESXi port groups that only carry VMkernel traffic). ESXi resolves the port group by name at attach time.

@@ -1,1 +1,0 @@
-Add ``vcf_esxi_ad_auth`` client, execution and state modules covering the 912-controls ``ESXi.enable-ad-auth_adv`` requirement: join ESXi hosts to an Active Directory domain natively via ``HostActiveDirectoryAuthentication.JoinDomain_Task`` (plaintext AD credentials sent directly to the host). The CAM/auth-proxy path is unchanged and remains in ``vcf_esxi_auth_proxy``.

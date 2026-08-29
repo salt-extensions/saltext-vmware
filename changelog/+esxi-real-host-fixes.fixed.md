@@ -1,1 +1,0 @@
-Fix a batch of bugs surfaced when the ``vcf_esxi_*`` state modules are applied against a real ESXi 9.1 host (build 25370933) instead of the in-memory mocks used by the test suite: ``utils/esxi.get_host_system`` traversal, ``esxi_ntp.get`` property access, and ``esxi_advanced.get`` return shape.

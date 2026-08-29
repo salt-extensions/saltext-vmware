@@ -1,1 +1,0 @@
-Extend `nsx_tier0` with BGP/OSPF/multicast get+set and `nsx_tier1` with multicast get+set (Policy API `locale-services/*` PATCH), plus `vcf_nsx_tier0.bgp_disabled` / `ospf_disabled` / `multicast_disabled` and `vcf_nsx_tier1.multicast_disabled` states for 912 gateway-hardening controls.

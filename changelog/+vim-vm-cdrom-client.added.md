@@ -1,1 +1,0 @@
-Add ``vim_vm_cdrom`` client + ``vcf_vim_vm_cdrom`` execution/state modules for CD-ROM device lifecycle (add, remove, attach ISO, detach), including the pyVmomi task-wait helper needed by ``state.apply`` orchestration of a nested-ESXi lab.

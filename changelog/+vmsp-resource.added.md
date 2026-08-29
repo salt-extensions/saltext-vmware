@@ -1,1 +1,0 @@
-Added a `vmsp` Salt Resource type (`resources/vmsp`) so VMSP instances declared under `resources.vmsp.instances` can be targeted with `T@vmsp:<id>` and operated via the framework (ntp/dns/syslog get/set).

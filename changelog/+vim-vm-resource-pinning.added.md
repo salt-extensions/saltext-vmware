@@ -1,1 +1,0 @@
-Add ``get_resource_config`` / ``set_resource_config`` to the ``vim_vm`` client + ``vcf_vim_vm.resource_pinning_disabled`` state to enforce 912 Controls prohibiting VM-to-CPU pinning (``cpuAffinity``, ``cpuAllocation.shares``) and VM-to-memory pinning (``memoryAllocation.reservation``, ``memoryReservationLockedToMax``).

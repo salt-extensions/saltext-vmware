@@ -1,1 +1,0 @@
-New ``usb_controllers_absent`` state on ``vcf_vim_vm_devices`` to find and remove USB / USB xHCI controllers across all VMs on a vCenter (or a single VM via the underlying client/module functions), supporting ``test=True`` dry-run reporting and skipping disconnected VMs by default.

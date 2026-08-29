@@ -1,1 +1,0 @@
-Add `esxi_vlcm` client, `vcf_esxi_vlcm` execution module, and `vcf_esxi_vlcm` state module for patching ESXi hosts via vCenter's ESX Lifecycle Manager (vLCM) REST API: depot configuration/sync, desired-image drafts, cluster apply policy, and compliance/precheck/stage/remediate workflows.

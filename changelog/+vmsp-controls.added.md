@@ -1,1 +1,0 @@
-Added VMSP NTP, DNS and syslog controls (states `vcf_vmsp_ntp`, `vcf_vmsp_dns`, `vcf_vmsp_syslog`) ported from config-modules, driven through the VMSP REST API (`/api/v1/identity/token` auth, `vsp` component apply).
