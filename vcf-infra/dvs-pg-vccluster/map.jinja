@@ -1,3 +1,41 @@
 {% import_yaml "dvs-pg-vccluster/defaults.yaml" as defaults %}
 
-{% set cfg = salt['pillar.get']('dvs-pg-vccluster', default=defaults, merge=True) %}
+{#
+  Prism pilot (VCOPS ansible->salt migration): read the DVS portgroup straight from the
+  ibn-cm99-main.yml inventory instead of a hand-authored vcf-infra-data values.yaml.
+
+  vcenter_dvs_portgroups is a dict of {label: {dvs_name, name, num_ports, port_binding,
+  vlan_id, ...}} keyed by an arbitrary label -- these are real, already-configured DVS
+  portgroups, so field names map almost 1:1: dvs_name -> dvs.name, name -> portgroup.name,
+  num_ports -> portgroup.num_ports, vlan_id -> portgroup.vlan_id, port_binding ->
+  portgroup.binding (prism's values, e.g. "ephemeral", are already valid vSphere binding-type
+  strings, same enum as defaults.yaml's "earlyBinding" -- no value remapping needed).
+  "esximgmt" is selected below.
+  TODO: promote selected_portgroup to a real deploy-time parameter instead of a template
+  constant if this resource ever needs to manage a different portgroup (e.g. "vmotion").
+
+  Backward compatible: prism-derived values are used only as the *default* for the same
+  pillar.get('dvs-pg-vccluster', ...) call as before, so an explicit pillar override (this
+  resource is documented as "Standalone: No -- Pillar required", i.e. always needed one) still
+  wins exactly like it does today.
+#}
+{% set vccluster_host = salt['pillar.get'](
+    'all:children:ibn_cm99_vc1_c1n01_ibn_broadcom_net__vccluster:hosts:ibn-cm99-vc1-c1',
+    {}
+) %}
+{% set selected_portgroup = 'esximgmt' %}
+{% set prism_pg = vccluster_host.get('vcenter_dvs_portgroups', {}).get(selected_portgroup, {}) %}
+
+{% set prism_defaults = {
+  'dvs': {
+    'name': prism_pg.get('dvs_name', defaults.get('dvs', {}).get('name', 'mgmt-anchor-vds01')),
+  },
+  'portgroup': {
+    'name': prism_pg.get('name', defaults.get('portgroup', {}).get('name', 'pg-cluster')),
+    'vlan_id': prism_pg.get('vlan_id', defaults.get('portgroup', {}).get('vlan_id', 0)),
+    'num_ports': prism_pg.get('num_ports', defaults.portgroup.num_ports),
+    'binding': prism_pg.get('port_binding', defaults.portgroup.binding),
+  },
+} %}
+
+{% set cfg = salt['pillar.get']('dvs-pg-vccluster', default=prism_defaults, merge=True) %}

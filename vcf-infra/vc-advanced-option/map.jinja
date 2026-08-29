@@ -1,3 +1,30 @@
 {% import_yaml "vc-advanced-option/defaults.yaml" as defaults %}
 
-{% set cfg = salt['pillar.get']('vc-advanced-option', default=defaults, merge=True) %}
+{#
+  Prism pilot (VCOPS ansible->salt migration): read the advanced option straight from the
+  ibn-cm99-main.yml inventory instead of a hand-authored vcf-infra-data values.yaml.
+
+  vcenter_advanced_options in prism is a flat {key: value} map covering many vCenter advanced
+  options; this resource only ever manages one key/value pair at a time, so `selected_key`
+  picks which prism entry to surface. Not found in prism -> falls back to defaults.yaml as-is.
+  TODO: promote selected_key to a real deploy-time parameter instead of a template constant.
+
+  Backward compatible: prism-derived values are used only as the *default* for the same
+  pillar.get('vc-advanced-option', ...) call as before, so an explicit pillar override still
+  wins exactly like it does today.
+#}
+{% set vcenter_host = salt['pillar.get'](
+    'all:children:ibn_cm99_vc1_c1n01_ibn_broadcom_net__vcenter:hosts:ibn-cm99-vc1.ibn.broadcom.net',
+    {}
+) %}
+{% set prism_options = vcenter_host.get('vcenter_advanced_options', {}) %}
+{% set selected_key = 'event.maxAge' %}
+
+{% set prism_defaults = {
+  'advanced_option': {
+    'key': selected_key if selected_key in prism_options else defaults.advanced_option.key,
+    'value': prism_options.get(selected_key, defaults.advanced_option.value),
+  },
+} %}
+
+{% set cfg = salt['pillar.get']('vc-advanced-option', default=prism_defaults, merge=True) %}

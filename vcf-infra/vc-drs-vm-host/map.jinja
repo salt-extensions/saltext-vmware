@@ -1,3 +1,38 @@
 {% import_yaml "vc-drs-vm-host/defaults.yaml" as defaults %}
 
-{% set cfg = salt['pillar.get']('vc-drs-vm-host', default=defaults, merge=True) %}
+{#
+  Prism pilot (VCOPS ansible->salt migration): read the DRS VM/host affinity rule straight
+  from the ibn-cm99-main.yml inventory instead of a hand-authored vcf-infra-data values.yaml.
+
+  vccluster_affinity_rules.vm_host in prism is a dict of {rule_name: {...}} keyed by an
+  arbitrary rule label; "vcenter_vms_to_deploy_hosts" is selected below. Field names match
+  this resource 1:1 except prism's "affinity" maps to this resource's "affine".
+  TODO: promote selected_rule to a real deploy-time parameter instead of a template constant.
+
+  Backward compatible: prism-derived values are used only as the *default* for the same
+  pillar.get('vc-drs-vm-host', ...) call as before, so an explicit pillar override still wins
+  exactly like it does today.
+#}
+{% set vccluster_host = salt['pillar.get'](
+    'all:children:ibn_cm99_vc1_c1n01_ibn_broadcom_net__vccluster:hosts:ibn-cm99-vc1-c1',
+    {}
+) %}
+{% set prism_rules = vccluster_host.get('vccluster_affinity_rules', {}).get('vm_host', {}) %}
+{% set selected_rule = 'vcenter_vms_to_deploy_hosts' %}
+{% set prism_rule = prism_rules.get(selected_rule, {}) %}
+
+{% set prism_defaults = {
+  'cluster': {
+    'name': vccluster_host.get('vccluster_name', defaults.cluster.name),
+  },
+  'vm_host': {
+    'name': prism_rule.get('name', defaults.vm_host.name),
+    'vm_group_name': prism_rule.get('vm_group_name', defaults.vm_host.vm_group_name),
+    'host_group_name': prism_rule.get('host_group_name', defaults.vm_host.host_group_name),
+    'affine': prism_rule.get('affinity', defaults.vm_host.affine),
+    'enabled': prism_rule.get('enabled', defaults.vm_host.enabled),
+    'mandatory': prism_rule.get('mandatory', defaults.vm_host.mandatory),
+  },
+} %}
+
+{% set cfg = salt['pillar.get']('vc-drs-vm-host', default=prism_defaults, merge=True) %}

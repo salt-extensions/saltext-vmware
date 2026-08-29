@@ -1,3 +1,30 @@
 {% import_yaml "role/defaults.yaml" as defaults %}
 
-{% set cfg = salt['pillar.get']('role', default=defaults, merge=True) %}
+{#
+  Prism pilot (VCOPS ansible->salt migration): read the vCenter role straight from the
+  ibn-cm99-main.yml inventory instead of a hand-authored vcf-infra-data values.yaml.
+
+  vcenter_roles in prism is a dict of {role_name: {name, privileges, force_removal, state}}.
+  Prism has no role literally named "automation-operator-role" (defaults.yaml's role); the
+  closest existing entry is "CloudAdmin", selected below. Not found in prism -> falls back to
+  defaults.yaml as-is.
+  TODO: promote selected_role to a real deploy-time parameter instead of a template constant.
+
+  Backward compatible: prism-derived values are used only as the *default* for the same
+  pillar.get('role', ...) call as before, so an explicit pillar override still wins exactly
+  like it does today.
+#}
+{% set vcenter_host = salt['pillar.get'](
+    'all:children:ibn_cm99_vc1_c1n01_ibn_broadcom_net__vcenter:hosts:ibn-cm99-vc1.ibn.broadcom.net',
+    {}
+) %}
+{% set prism_roles = vcenter_host.get('vcenter_roles', {}) %}
+{% set selected_role = 'CloudAdmin' %}
+{% set prism_role = prism_roles.get(selected_role, {}) %}
+
+{% set prism_defaults = {
+  'name': prism_role.get('name', defaults.name),
+  'privileges': prism_role.get('privileges', defaults.privileges),
+} %}
+
+{% set cfg = salt['pillar.get']('role', default=prism_defaults, merge=True) %}

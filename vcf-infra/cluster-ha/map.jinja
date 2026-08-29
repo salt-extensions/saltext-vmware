@@ -1,3 +1,37 @@
 {% import_yaml "cluster-ha/defaults.yaml" as defaults %}
 
-{% set cfg = salt['pillar.get']('cluster-ha', default=defaults, merge=True) %}
+{#
+  Prism pilot (VCOPS ansible->salt migration): read cluster HA settings straight from the
+  ibn-cm99-main.yml inventory instead of a hand-authored vcf-infra-data values.yaml.
+
+  Field mapping vs prism's vccluster_ha (names differ, isolation_response has no prism
+  equivalent so it always falls back to defaults.yaml):
+    enable -> ha.enabled
+    (no key) -> ha.isolation_response (kept from defaults.yaml)
+    everything else is a direct name match.
+
+  Backward compatible: prism-derived values are used only as the *default* for the same
+  pillar.get('cluster-ha', ...) call as before, so an explicit cluster-ha pillar (e.g. from
+  vcf-infra-data) still overrides prism/defaults exactly like it does today.
+#}
+{% set vccluster_host = salt['pillar.get'](
+    'all:children:ibn_cm99_vc1_c1n01_ibn_broadcom_net__vccluster:hosts:ibn-cm99-vc1-c1',
+    {}
+) %}
+{% set prism_ha = vccluster_host.get('vccluster_ha', {}) %}
+
+{% set prism_defaults = {
+  'cluster': {
+    'name': vccluster_host.get('vccluster_name', defaults.get('cluster', {}).get('name', 'mgmt-anchor')),
+  },
+  'ha': {
+    'enabled': prism_ha.get('enable', defaults.ha.enabled),
+    'host_monitoring': prism_ha.get('host_monitoring', defaults.ha.host_monitoring),
+    'vm_monitoring': prism_ha.get('vm_monitoring', defaults.ha.vm_monitoring),
+    'restart_priority': prism_ha.get('restart_priority', defaults.ha.restart_priority),
+    'isolation_response': defaults.ha.isolation_response,
+    'admission_control_enabled': prism_ha.get('admission_control_enabled', defaults.ha.admission_control_enabled),
+  },
+} %}
+
+{% set cfg = salt['pillar.get']('cluster-ha', default=prism_defaults, merge=True) %}

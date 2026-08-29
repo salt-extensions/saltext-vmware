@@ -1,3 +1,37 @@
 {% import_yaml "permission-vccluster/defaults.yaml" as defaults %}
 
-{% set cfg = salt['pillar.get']('permission-vccluster', default=defaults, merge=True) %}
+{#
+  Prism pilot (VCOPS ansible->salt migration): read the vCenter permission straight from the
+  ibn-cm99-main.yml inventory instead of a hand-authored vcf-infra-data values.yaml.
+
+  vcenter_permissions in prism is a dict of {label: {object_name, principal|group, role}},
+  and every current entry is scoped to "rootFolder" -- there is no genuinely cluster-scoped
+  permission entry in prism yet. "azmgmt_username" (sddc-automation-api / Admin) is the closest
+  semantic match to this resource's automation-service-account intent and is selected below.
+  object_name is mapped to entity_ref as a best-effort field mapping (rootFolder is a name, not
+  the cluster MOID defaults.yaml uses e.g. domain-c9). propagate has no prism equivalent and
+  always keeps its defaults.yaml value.
+  TODO: swap in a real per-cluster prism entry if/when one exists; promote selected_permission
+  to a real deploy-time parameter instead of a template constant.
+
+  Backward compatible: prism-derived values are used only as the *default* for the same
+  pillar.get('permission-vccluster', ...) call as before, so an explicit pillar override still
+  wins exactly like it does today.
+#}
+{% set vcenter_host = salt['pillar.get'](
+    'all:children:ibn_cm99_vc1_c1n01_ibn_broadcom_net__vcenter:hosts:ibn-cm99-vc1.ibn.broadcom.net',
+    {}
+) %}
+{% set prism_permissions = vcenter_host.get('vcenter_permissions', {}) %}
+{% set selected_permission = 'azmgmt_username' %}
+{% set prism_perm = prism_permissions.get(selected_permission, {}) %}
+
+{% set prism_defaults = {
+  'entity_ref': prism_perm.get('object_name', defaults.entity_ref),
+  'principal': prism_perm.get('principal', prism_perm.get('group', defaults.principal)),
+  'role': prism_perm.get('role', defaults.role),
+  'propagate': defaults.propagate,
+  'group': True if 'group' in prism_perm else defaults.group,
+} %}
+
+{% set cfg = salt['pillar.get']('permission-vccluster', default=prism_defaults, merge=True) %}
