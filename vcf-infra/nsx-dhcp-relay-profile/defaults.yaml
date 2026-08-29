@@ -1,0 +1,4 @@
+dhcp_relay:
+  name: dhcp-relay-01
+  server_addresses:
+    - 10.0.0.53

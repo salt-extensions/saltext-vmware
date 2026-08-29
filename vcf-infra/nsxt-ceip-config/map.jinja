@@ -1,0 +1,3 @@
+{% import_yaml "nsxt-ceip-config/defaults.yaml" as defaults %}
+
+{% set cfg = salt['pillar.get']('nsxt-ceip-config', default=defaults, merge=True) %}

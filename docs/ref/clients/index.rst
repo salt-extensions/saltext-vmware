@@ -26,6 +26,7 @@ ______________
     nsx_compute_collection
     nsx_context_profile
     nsx_dhcp
+    nsx_dns_servers
     nsx_edge
     nsx_edge_cluster
     nsx_firewall_rule
@@ -41,20 +42,26 @@ ______________
     nsx_lb_pool
     nsx_lb_service
     nsx_lb_virtual_server
+    nsx_ldap
+    nsx_localos_user
     nsx_nat
     nsx_node
     nsx_node_services
+    nsx_ntp_servers
     nsx_qos_profile
     nsx_role_binding
     nsx_security_policy
     nsx_segment
     nsx_service
+    nsx_syslog_exporter
     nsx_telemetry
     nsx_tier0
     nsx_tier1
     nsx_transport_node
     nsx_transport_zone
     nsx_upgrade
+    nsx_uplink_profile
+    nsx_vidm
     sddc_avn
     sddc_bundles
     sddc_certificates

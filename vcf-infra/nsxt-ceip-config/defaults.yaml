@@ -1,0 +1,5 @@
+# CEIP (telemetry) opt-in for the NSX Manager. Pinning `optin: false`
+# satisfies the 912 Controls requirement that NSX-T must not send
+# environment information to third parties.
+ceip:
+  optin: false

@@ -1,0 +1,13 @@
+# Segment used for a WCP (vSphere Supervisor) workload network. `**spec`
+# is a raw pass-through to the NSX Policy API segment PUT body — verify
+# field names (especially `advanced_config`) against your NSX-T/WCP
+# version; WCP-managed segments are often auto-created by WCP itself, so
+# hand-managing one this way is the exception, not the norm.
+segment:
+  name: seg-wcp-workload-01
+  spec:
+    transport_zone_path: /infra/sites/default/enforcement-points/default/transport-zones/overlay-tz
+    subnets:
+      - gateway_address: 172.16.12.1/24
+    advanced_config:
+      connectivity: ON

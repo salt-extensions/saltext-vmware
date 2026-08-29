@@ -1,0 +1,3 @@
+{% import_yaml "nsxt-localos-user/defaults.yaml" as defaults %}
+
+{% set cfg = salt['pillar.get']('nsxt-localos-user', default=defaults, merge=True) %}

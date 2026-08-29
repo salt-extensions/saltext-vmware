@@ -26,6 +26,7 @@ _________________
     vcf_nsx_compute_collection
     vcf_nsx_context_profile
     vcf_nsx_dhcp
+    vcf_nsx_dns_servers
     vcf_nsx_edge
     vcf_nsx_edge_cluster
     vcf_nsx_firewall_rule
@@ -36,20 +37,26 @@ _________________
     vcf_nsx_ipsec_vpn
     vcf_nsx_l2_vpn
     vcf_nsx_lb
+    vcf_nsx_ldap
+    vcf_nsx_localos_user
     vcf_nsx_nat
     vcf_nsx_node
     vcf_nsx_node_services
+    vcf_nsx_ntp_servers
     vcf_nsx_qos_profile
     vcf_nsx_role_binding
     vcf_nsx_security_policy
     vcf_nsx_segment
     vcf_nsx_service
+    vcf_nsx_syslog_exporter
     vcf_nsx_telemetry
     vcf_nsx_tier0
     vcf_nsx_tier1
     vcf_nsx_transport_node
     vcf_nsx_transport_zone
     vcf_nsx_upgrade
+    vcf_nsx_uplink_profile
+    vcf_nsx_vidm
     vcf_sddc_bundles
     vcf_sddc_certificates
     vcf_sddc_cluster

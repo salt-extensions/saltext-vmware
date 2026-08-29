@@ -1,0 +1,9 @@
+# Segment scoped to a vCenter cluster's workloads (vs. nsxt-segment's
+# generic example). `**spec` is a raw pass-through to the NSX Policy API
+# segment PUT body — verify field names against your NSX-T version.
+segment:
+  name: seg-mgmt-anchor-01
+  spec:
+    transport_zone_path: /infra/sites/default/enforcement-points/default/transport-zones/overlay-tz
+    subnets:
+      - gateway_address: 172.16.11.1/24

@@ -1,0 +1,12 @@
+# LDAP/AD identity source for NSX Manager authentication. `**spec` is a
+# raw pass-through to the create call. Field names follow the standard
+# NSX-T shape but haven't been exercised against a live NSX Manager —
+# verify before real use.
+provider:
+  name: corp-ldap
+  base_dn: dc=corp,dc=example,dc=test
+  domain_name: corp.example.test
+  ldap_servers:
+    - url: ldaps://ldap.corp.example.test:636
+      bind_identity: CN=svc-nsx,CN=Users,DC=corp,DC=example,DC=test
+      password: changeme
